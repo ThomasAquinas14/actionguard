@@ -1,4 +1,4 @@
-<!-- DEMO GIF HERE -->
+![actionguard halting an AI agent's duplicate refund for human approval](docs/demo.gif)
 
 # actionguard
 
