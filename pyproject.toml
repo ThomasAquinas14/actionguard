@@ -1,0 +1,67 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "actionguard"
+version = "0.1.0"
+description = "Catch your LangChain agent's risky actions before they run, and route them to a human for approval — in 3 lines."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+authors = [{ name = "ThomasAquinas14", email = "shivanshrz88@gmail.com" }]
+keywords = [
+    "langchain",
+    "agents",
+    "human-in-the-loop",
+    "approval",
+    "guardrails",
+    "ai-safety",
+    "tools",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
+]
+dependencies = [
+    "langchain-core>=0.3,<2.0",
+]
+
+[project.optional-dependencies]
+slack = ["requests>=2.20"]
+dev = [
+    "pytest>=7.0",
+    "ruff>=0.4",
+    "black>=24.0",
+    "requests>=2.20",
+]
+
+[project.urls]
+Homepage = "https://github.com/ThomasAquinas14/actionguard"
+Repository = "https://github.com/ThomasAquinas14/actionguard"
+Issues = "https://github.com/ThomasAquinas14/actionguard/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/actionguard"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B"]
+
+[tool.black]
+line-length = 100
+target-version = ["py310"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+*.egg
+
+# Virtual envs
+.venv/
+venv/
+env/
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# actionguard runtime artifacts
+actionguard_audit.jsonl
+slack_decision.json
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
