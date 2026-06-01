@@ -17,9 +17,10 @@ def refund_customer(amount: float, customer_id: str) -> str:
 
 When your agent calls `refund_customer(amount=4000, ...)`, execution **pauses**, a human is asked to approve or deny, and the refund only runs if approved. Denied calls return a clear message to the agent instead of doing anything. Every decision is written to an append-only audit log.
 
-[![PyPI](https://img.shields.io/pypi/v/actionguard.svg)](https://pypi.org/project/actionguard/)
+[![PyPI](https://img.shields.io/pypi/v/actionguard.svg?cacheSeconds=3600)](https://pypi.org/project/actionguard/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Python](https://img.shields.io/pypi/pyversions/actionguard.svg)](https://pypi.org/project/actionguard/)
+[![Python](https://img.shields.io/pypi/pyversions/actionguard.svg?cacheSeconds=3600)](https://pypi.org/project/actionguard/)
+[![CI](https://github.com/ThomasAquinas14/actionguard/actions/workflows/ci.yml/badge.svg)](https://github.com/ThomasAquinas14/actionguard/actions/workflows/ci.yml)
 
 ## Why
 
