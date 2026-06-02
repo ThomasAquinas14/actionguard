@@ -151,9 +151,10 @@ def test_default_policy_requires_approval(auto_deny, audit_log):
     assert len(auto_deny.requests) == 1
 
 
-def test_guard_rejects_non_tool():
+def test_guard_rejects_non_callable():
+    # As of v0.2 guard accepts any callable; only genuinely non-callable input is rejected.
     with pytest.raises(TypeError):
-        guard(lambda x: x, policy=ApprovalPolicy())
+        guard(123, policy=ApprovalPolicy())
 
 
 # ---- schema preservation for tools that infer their schema from _run ---------

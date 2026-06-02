@@ -32,8 +32,9 @@ Roughly in priority order. None of these change the v0 public API; they extend i
    request URL, threaded context, and the approver's identity captured in the audit log.
 3. **More approval channels.** Email, Discord, PagerDuty, and a small local web approval
    UI — all behind the same `ApprovalChannel` interface.
-4. **Multi-framework adapters.** Bring the same `guard` ergonomics to CrewAI,
-   LlamaIndex, the OpenAI Agents SDK, and plain function calls — not just LangChain.
+4. **Multi-framework adapters.** Plain function calls are supported as of v0.2 (`guard`
+   wraps any callable). Next: first-class adapters/ergonomics for CrewAI, LlamaIndex, and
+   the OpenAI Agents SDK so their tool types are guarded as cleanly as LangChain's.
 5. **Approval routing & policy composition.** Route different actions to different
    approvers, escalation/timeouts, and combine policies (all-of/any-of) cleanly.
 6. **Audit sinks.** Pluggable destinations beyond JSONL (stdout, a webhook, a database)

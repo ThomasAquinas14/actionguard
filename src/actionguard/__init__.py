@@ -18,10 +18,11 @@ approved. Every decision is written to an append-only audit log.
 from .audit import AuditLog
 from .channels import ApprovalChannel, CLIChannel, SlackChannel
 from .core import Action, Decision
+from .function import ApprovalDenied
 from .langchain import ApprovalWrappedTool, guard, guard_tools
 from .policy import ApprovalPolicy
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 __all__ = [
     "guard",
@@ -33,6 +34,7 @@ __all__ = [
     "AuditLog",
     "Action",
     "Decision",
+    "ApprovalDenied",
     "ApprovalWrappedTool",
     "__version__",
 ]

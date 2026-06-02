@@ -6,6 +6,26 @@ All notable changes to actionguard are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] — framework-agnostic guard
+
+`guard` now wraps **any Python callable**, not just LangChain tools — the capability a
+framework's built-in approval hook structurally can't offer.
+
+### Added
+- `guard` accepts any callable. A LangChain `BaseTool` behaves exactly as before; any
+  other callable (plain function, method, async function, other frameworks' tools) is
+  wrapped to pause for approval the same way. The wrapped callable preserves the
+  original's name, docstring, and signature.
+- `ApprovalDenied` exception: a denied call to a guarded plain callable raises it (it
+  carries the `Action` and `Decision`). Set `guard(..., on_denied="return")` to return
+  the denial message string instead of raising.
+- Policy arguments for callables are bound by name (defaults applied, `self`/`cls`
+  dropped, `**kwargs` flattened), so the same `ApprovalPolicy` rules work unchanged.
+
+### Unchanged
+- The LangChain path (`guard` on a tool, `guard_tools`) is byte-for-byte identical.
+  This release is fully backward-compatible.
+
 ## [0.1.0] — initial release
 
 First public release. A deliberately minimal v0: human-in-the-loop approval for an

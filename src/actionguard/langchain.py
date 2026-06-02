@@ -14,7 +14,7 @@ async, or both.
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Callable, Optional, Union
+from typing import Any, Optional, Union
 
 from langchain_core.callbacks import (
     AsyncCallbackManagerForToolRun,
@@ -26,6 +26,7 @@ from .audit import AuditLog
 from .channels.base import ApprovalChannel
 from .channels.cli import CLIChannel
 from .core import Action, Decision, denial_message, guard_error_message
+from .function import _wrap_callable
 from .policy import ApprovalPolicy
 
 
@@ -215,53 +216,78 @@ def _resolve_audit(audit: Optional[Union[AuditLog, str]]) -> AuditLog:
 
 
 def guard(
-    tool: Optional[BaseTool] = None,
+    target: Optional[Any] = None,
     *,
     policy: Optional[ApprovalPolicy] = None,
     channel: Optional[ApprovalChannel] = None,
     audit: Optional[Union[AuditLog, str]] = None,
-) -> Union[ApprovalWrappedTool, Callable[[BaseTool], ApprovalWrappedTool]]:
-    """Wrap a single LangChain tool so risky calls pause for human approval.
+    on_denied: str = "raise",
+) -> Any:
+    """Wrap a tool *or any callable* so risky calls pause for human approval.
 
-    Usable two ways::
+    Works on a LangChain ``BaseTool`` / ``@tool`` function **and** on any plain Python
+    callable. The behaviour adapts to what it wraps:
+
+    - **A LangChain tool** → returns a guarded tool that is identical to the agent
+      (same name/description/args schema). A denied call returns a denial *message* to
+      the agent (so the agent loop continues).
+    - **Any other callable** → returns a function of the same shape (sync or async). A
+      denied call **raises** :class:`ApprovalDenied` by default, or returns the denial
+      string if ``on_denied="return"``.
+
+    Usable directly or as a parameterised decorator::
 
         @guard(policy=ApprovalPolicy(require_if=lambda a: a["amount"] > 100))
         @tool
-        def refund_customer(amount: float, customer_id: str) -> str:
-            ...
+        def refund_customer(amount: float, customer_id: str) -> str: ...
 
-        # or, directly:
-        safe_tool = guard(refund_customer, policy=my_policy)
+        @guard(policy=ApprovalPolicy(require_always=True))   # plain function — no LangChain
+        def delete_user(user_id: str) -> None: ...
+
+        safe = guard(refund_customer, policy=my_policy)       # or call it directly
 
     Parameters
     ----------
-    tool:
-        The tool to wrap. Omit it to use ``guard`` as a parameterised decorator.
+    target:
+        The tool or callable to wrap. Omit it to use ``guard`` as a parameterised decorator.
     policy:
         When to require approval. Defaults to "require approval for every call".
     channel:
         Where the human answers. Defaults to :class:`CLIChannel` (a terminal prompt).
     audit:
         An :class:`AuditLog`, a path string, or ``None`` for the default log file.
-
-    Returns
-    -------
-    The wrapped tool, or — if ``tool`` is omitted — a decorator that wraps one.
+    on_denied:
+        For plain callables only: ``"raise"`` (default) to raise :class:`ApprovalDenied`
+        on denial, or ``"return"`` to return the denial message string instead. Ignored
+        for LangChain tools (they always return the message to the agent).
     """
     resolved_policy = _resolve_policy(policy)
     resolved_channel = _resolve_channel(channel)
     resolved_audit = _resolve_audit(audit)
 
-    def decorator(inner: BaseTool) -> ApprovalWrappedTool:
-        return _wrap_one(
-            inner,
-            policy=resolved_policy,
-            channel=resolved_channel,
-            audit=resolved_audit,
+    def decorator(obj: Any) -> Any:
+        if isinstance(obj, BaseTool):
+            return _wrap_one(
+                obj,
+                policy=resolved_policy,
+                channel=resolved_channel,
+                audit=resolved_audit,
+            )
+        if callable(obj):
+            return _wrap_callable(
+                obj,
+                policy=resolved_policy,
+                channel=resolved_channel,
+                audit=resolved_audit,
+                on_denied=on_denied,
+            )
+        raise TypeError(
+            "guard expects a LangChain tool or any callable; "
+            f"got {type(obj).__name__}, which is not callable."
         )
 
-    if tool is not None:
-        return decorator(tool)
+    if target is not None:
+        return decorator(target)
     return decorator
 
 

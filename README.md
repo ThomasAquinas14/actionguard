@@ -90,6 +90,26 @@ guarded = guard_tools(my_tools, policy=my_policy)   # returns a new list
 agent = create_agent(llm, guarded)                  # the agent sees identical tools
 ```
 
+## Not just LangChain — guard *any* function
+
+`guard` wraps any Python callable, not only LangChain tools. This is the one thing a framework's built-in approval hook can't do — it works on a plain function, a CrewAI/LlamaIndex tool, or anything callable. Because a plain function has no agent loop to hand a message to, a denied call **raises `ApprovalDenied`** (or set `on_denied="return"` to get the denial string back):
+
+```python
+from actionguard import guard, ApprovalPolicy, ApprovalDenied
+
+@guard(policy=ApprovalPolicy(require_always=True))
+def delete_user(user_id: str) -> None:
+    """Permanently delete a user account."""
+    ...
+
+try:
+    delete_user("u_42")        # pauses for approval; runs only if you say yes
+except ApprovalDenied as denied:
+    print("blocked:", denied.action.pretty())
+```
+
+It preserves the function's name, docstring, and signature (so other tools' introspection still works), and supports `async def` too. Same policies, channels, and audit log as the LangChain path.
+
 ## Policies — decide *what* needs approval
 
 An `ApprovalPolicy` looks at a tool call's arguments and answers one question: does a human need to approve this? Rules combine with OR — if any rule fires, the call is held.
