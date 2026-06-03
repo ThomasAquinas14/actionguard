@@ -59,11 +59,15 @@ class CLIChannel(ApprovalChannel):
         self._input_fn = input_fn
 
     def request_approval(self, action: Action) -> Decision:
-        # Argument values are shown via repr (which escapes control chars); keys, the
-        # tool name, and the description are sanitized so a malicious tool/arg can't
-        # forge the banner the human is deciding on (see core.sanitize_for_display).
+        # Everything shown is sanitized so a malicious tool/arg can't forge the banner
+        # the human is deciding on (see core.sanitize_for_display). repr() escapes
+        # control chars inside *str* values, but an object argument can carry a custom
+        # __repr__ with raw escapes, so we sanitize the repr output too.
         args_block = (
-            "\n".join(f"    {sanitize_for_display(k)} = {v!r}" for k, v in action.args.items())
+            "\n".join(
+                f"    {sanitize_for_display(k)} = {sanitize_for_display(repr(v))}"
+                for k, v in action.args.items()
+            )
             if action.args
             else "    (no arguments)"
         )

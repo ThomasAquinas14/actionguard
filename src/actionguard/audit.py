@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import threading
+import warnings
 from dataclasses import asdict
 from datetime import datetime, timezone
 from typing import Any, Optional, Union
@@ -67,6 +68,20 @@ class AuditLog:
             parent = os.path.dirname(self.path)
             if parent:
                 os.makedirs(parent, exist_ok=True)
+            # Preflight the sink: confirm we can actually append before any guarded
+            # action runs. A bad path or permissions should fail here, at guard
+            # construction, not *after* an irreversible action has executed — surfacing
+            # it then would look like the action failed and invite a duplicate retry.
+            # Opening in append mode writes nothing.
+            try:
+                with open(self.path, "a", encoding="utf-8"):
+                    pass
+            except OSError as exc:
+                raise OSError(
+                    f"actionguard audit log is not writable at {self.path!r}: {exc}. "
+                    "Fix the path or permissions, or disable auditing with "
+                    "AuditLog(enabled=False)."
+                ) from exc
 
     def record(
         self,
@@ -104,6 +119,30 @@ class AuditLog:
                 fh.write(line)
                 fh.flush()
         return record
+
+    def record_safely(self, **kwargs: Any) -> dict[str, Any]:
+        """Like :meth:`record`, but never raises — for records written *after* a tool ran.
+
+        Once the side effect has happened, a failure to persist the audit line must not
+        turn a completed (possibly irreversible) action into an exception the caller
+        would see and retry. The write is attempted; on failure we warn loudly (the
+        action *did* run and is now unaudited) instead of propagating. Preflighting the
+        sink at construction makes this path rare; this is the backstop for a sink that
+        goes bad mid-run (disk full, file removed, permissions changed).
+        """
+        try:
+            return self.record(**kwargs)
+        except Exception as exc:  # noqa: BLE001 - intentional: must not mask a completed action
+            action = kwargs.get("action")
+            tool = getattr(action, "tool_name", "<unknown>")
+            warnings.warn(
+                f"actionguard ran {tool!r} but could not write its audit record "
+                f"({type(exc).__name__}: {exc}); the action DID execute and is now "
+                "unaudited.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            return kwargs  # best-effort: hand back what we tried to write
 
     @staticmethod
     def _fallback(obj: Any) -> str:

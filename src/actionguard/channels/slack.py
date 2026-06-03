@@ -27,6 +27,20 @@ from .base import ApprovalChannel
 PollFn = Callable[[Action], Optional[Decision]]
 
 
+def _slack_safe(text: str) -> str:
+    """Make a string safe to drop into Slack mrkdwn without forging the message.
+
+    Slack treats ``&``, ``<`` and ``>`` as metacharacters, and a backtick inside an
+    inline-code span closes it — an argument value containing one could otherwise break
+    out and alter the approval message's formatting. We neutralize control characters,
+    HTML-escape the three metacharacters, and swap backticks for a visually similar
+    character (U+02CB) that cannot terminate a code span.
+    """
+    text = sanitize_for_display(text)
+    text = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    return text.replace("`", "ˋ")
+
+
 class SlackChannel(ApprovalChannel):
     """Notify Slack about a pending action and wait for a decision.
 
@@ -46,6 +60,9 @@ class SlackChannel(ApprovalChannel):
     on_timeout:
         ``"deny"`` (default, safe) or ``"approve"`` — what to decide if no answer
         arrives before ``timeout``.
+    post_timeout:
+        Per-request network timeout (seconds) for the webhook POST, so a hung Slack
+        connection can't block an approval indefinitely.
     session:
         Optional ``requests``-style session (must expose ``.post(url, json=...)``).
         Injectable for testing; defaults to the ``requests`` module.
@@ -61,6 +78,7 @@ class SlackChannel(ApprovalChannel):
         timeout: float = 300.0,
         poll_interval: float = 5.0,
         on_timeout: str = "deny",
+        post_timeout: float = 10.0,
         session: Optional[object] = None,
     ) -> None:
         if on_timeout not in {"deny", "approve"}:
@@ -70,6 +88,7 @@ class SlackChannel(ApprovalChannel):
         self.timeout = timeout
         self.poll_interval = poll_interval
         self.on_timeout = on_timeout
+        self.post_timeout = post_timeout
         self._session = session
 
     def _poster(self):
@@ -86,18 +105,29 @@ class SlackChannel(ApprovalChannel):
 
     def _post(self, action: Action) -> None:
         about = (
-            f"*About:* {sanitize_for_display(action.tool_description.strip().splitlines()[0])}\n"
+            f"*About:* {_slack_safe(action.tool_description.strip().splitlines()[0])}\n"
             if action.tool_description
             else ""
         )
         text = (
             f":rotating_light: *actionguard — approval required*\n"
-            f"*Tool:* `{sanitize_for_display(action.tool_name)}`\n"
+            f"*Tool:* `{_slack_safe(action.tool_name)}`\n"
             + about
             + "*Arguments:*\n"
-            + "\n".join(f"• `{sanitize_for_display(k)}` = `{v!r}`" for k, v in action.args.items())
+            + "\n".join(
+                f"• `{_slack_safe(k)}` = `{_slack_safe(repr(v))}`" for k, v in action.args.items()
+            )
         )
-        self._poster().post(self.webhook_url, json={"text": text})
+        response = self._poster().post(
+            self.webhook_url, json={"text": text}, timeout=self.post_timeout
+        )
+        # Fail closed: if Slack didn't accept the message, the human never saw it, so we
+        # must not fall through to waiting for / reading a decision as though they had.
+        # The raised error propagates to the wrapper, which fails closed (the action does
+        # not run). Guarded with getattr so injected test sessions need not provide it.
+        raise_for_status = getattr(response, "raise_for_status", None)
+        if callable(raise_for_status):
+            raise_for_status()
 
     def request_approval(self, action: Action) -> Decision:
         self._post(action)

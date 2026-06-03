@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "actionguard"
-version = "0.2.0"
+version = "0.2.1"
 description = "Catch your LangChain agent's risky actions before they run, and route them to a human for approval — in 3 lines."
 readme = "README.md"
 license = { text = "MIT" }

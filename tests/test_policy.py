@@ -38,8 +38,25 @@ def test_amount_over_threshold():
     assert policy.needs_approval({"amount": 100.01}) is True
     assert policy.needs_approval({"amount": 100}) is False  # strictly greater
     assert policy.needs_approval({"amount": 5}) is False
-    assert policy.needs_approval({"amount": "lots"}) is False  # non-numeric ignored
     assert policy.needs_approval({}) is False  # missing arg ignored
+
+
+def test_amount_over_parses_numeric_strings():
+    # A plain callable has no schema to coerce types, so a string amount must not slip
+    # past the threshold. Numeric strings are parsed and compared.
+    policy = ApprovalPolicy(amount_over={"arg": "amount", "threshold": 100})
+    assert policy.needs_approval({"amount": "4000"}) is True
+    assert policy.needs_approval({"amount": "  250.5 "}) is True
+    assert policy.needs_approval({"amount": "50"}) is False
+    assert policy.needs_approval({"amount": "100"}) is False  # strictly greater
+
+
+def test_amount_over_fails_closed_on_unparseable_value():
+    # Present but not a number we can compare => hold the call, don't silently allow it.
+    policy = ApprovalPolicy(amount_over={"arg": "amount", "threshold": 100})
+    assert policy.needs_approval({"amount": "lots"}) is True
+    assert policy.needs_approval({"amount": None}) is True
+    assert policy.needs_approval({"amount": object()}) is True
 
 
 def test_amount_over_ignores_bools():

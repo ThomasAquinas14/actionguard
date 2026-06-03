@@ -22,7 +22,7 @@ from .function import ApprovalDenied
 from .langchain import ApprovalWrappedTool, guard, guard_tools
 from .policy import ApprovalPolicy
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 
 __all__ = [
     "guard",

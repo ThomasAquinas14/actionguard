@@ -15,6 +15,27 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
 
+def _as_number(value: Any) -> Optional[float]:
+    """Interpret a threshold argument as a number, or return ``None`` if it isn't one.
+
+    Numeric **strings** like ``"4000"`` are parsed: a plain function (no LangChain
+    schema to coerce types) can receive an unconverted string argument, and that must
+    not be a way to slip a large value past a threshold. Booleans are deliberately not
+    numbers here — ``True == 1`` in Python would otherwise let a boolean flag trip a
+    numeric threshold (see :func:`ApprovalPolicy.needs_approval`).
+    """
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value.strip())
+        except ValueError:
+            return None
+    return None
+
+
 @dataclass
 class ApprovalPolicy:
     """Decide whether a tool call requires human approval.
@@ -26,7 +47,9 @@ class ApprovalPolicy:
       it is an explicit "never require" escape hatch (other rules still apply).
     - ``require_if``: an arbitrary predicate ``fn(args_dict) -> bool``.
     - ``amount_over``: e.g. ``{"arg": "amount", "threshold": 100}`` — hold the call
-      when the named numeric argument is strictly greater than ``threshold``.
+      when the named argument is strictly greater than ``threshold``. Numeric strings
+      (``"4000"``) are parsed and compared. If the argument is present but cannot be
+      read as a number at all, the call is held (fail closed) rather than skipped.
     - ``match_args``: e.g. ``{"customer_id": r"^prod-"}`` — hold the call when the
       named argument's string form matches the given regular expression.
 
@@ -91,11 +114,22 @@ class ApprovalPolicy:
             return True
 
         if self.amount_over is not None:
-            value = args.get(self.amount_over["arg"])
-            threshold = self.amount_over["threshold"]
-            if isinstance(value, (int, float)) and not isinstance(value, bool):
-                if value > threshold:
-                    return True
+            arg = self.amount_over["arg"]
+            if arg in args:
+                value = args[arg]
+                threshold = self.amount_over["threshold"]
+                if isinstance(value, bool):
+                    # A boolean flag is not a numeric amount; don't let True==1 trip it.
+                    pass
+                else:
+                    number = _as_number(value)  # parses ints, floats, and numeric strings
+                    if number is None:
+                        # The configured threshold arg is present but isn't a number we
+                        # can compare (e.g. "lots", an object). Fail closed: require
+                        # approval rather than silently letting an un-checkable value run.
+                        return True
+                    if number > threshold:
+                        return True
 
         for name, pattern in self._compiled.items():
             value = args.get(name)

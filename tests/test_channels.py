@@ -99,6 +99,21 @@ def test_cli_channel_sanitizes_control_chars_in_banner():
     assert "\\x1b" in out  # escaped form is shown instead
 
 
+def test_cli_channel_sanitizes_malicious_repr_value():
+    # repr() escapes control chars inside str values, but an *object* argument can carry
+    # a custom __repr__ with raw terminal escapes. The banner must neutralize those too.
+    class Evil:
+        def __repr__(self):
+            return "ok\x1b[2Khidden"
+
+    stream = io.StringIO()
+    action = Action(tool_name="t", args={"payload": Evil()}, tool_description="d")
+    CLIChannel(stream=stream, input_fn=lambda _p: "n").request_approval(action)
+    out = stream.getvalue()
+    assert "\x1b" not in out  # no raw escape reaches the terminal
+    assert "\\x1b" in out  # shown in escaped form
+
+
 def test_cli_channel_eof_denies():
     def raise_eof(_prompt):
         raise EOFError
@@ -112,13 +127,25 @@ def test_cli_channel_eof_denies():
 # ---- SlackChannel (v0) ------------------------------------------------------
 
 
-class _FakeSession:
-    def __init__(self):
-        self.posts = []
+class _FakeResponse:
+    """A minimal requests-style response whose raise_for_status can be made to fail."""
 
-    def post(self, url, json=None):
-        self.posts.append((url, json))
-        return None
+    def __init__(self, error: Exception | None = None):
+        self._error = error
+
+    def raise_for_status(self):
+        if self._error is not None:
+            raise self._error
+
+
+class _FakeSession:
+    def __init__(self, response: _FakeResponse | None = None):
+        self.posts = []
+        self._response = response if response is not None else _FakeResponse()
+
+    def post(self, url, json=None, timeout=None):
+        self.posts.append((url, json, timeout))
+        return self._response
 
 
 def test_slack_posts_and_polls_for_decision():
@@ -140,9 +167,10 @@ def test_slack_posts_and_polls_for_decision():
     assert decision.approved is True
     assert decision.source == "slack"  # source backfilled
     assert len(session.posts) == 1
-    url, payload = session.posts[0]
+    url, payload, timeout = session.posts[0]
     assert url == "https://hooks.slack.test/abc"
     assert "refund" in payload["text"]
+    assert timeout is not None  # a network timeout is always set on the POST
 
 
 def test_slack_times_out_to_deny_by_default():
@@ -175,3 +203,41 @@ def test_slack_timeout_can_default_to_approve():
 def test_slack_rejects_bad_on_timeout():
     with pytest.raises(ValueError):
         SlackChannel("https://x", on_timeout="sometimes")
+
+
+def test_slack_fails_closed_when_webhook_post_fails():
+    # A 4xx/5xx from the webhook means the human never saw the request. We must not fall
+    # through to polling/approving as if they had — raise_for_status propagates, and the
+    # channel never consults poll_fn.
+    session = _FakeSession(response=_FakeResponse(error=RuntimeError("HTTP 404")))
+    polled = []
+
+    def poll(_a):
+        polled.append(_a)
+        return Decision(approved=True)
+
+    channel = SlackChannel(
+        "https://hooks.slack.test/abc",
+        poll_fn=poll,
+        timeout=5,
+        poll_interval=0,
+        session=session,
+    )
+    with pytest.raises(RuntimeError, match="404"):
+        channel.request_approval(_action())
+    assert polled == []  # delivery failed => decision was never solicited
+
+
+def test_slack_escapes_backticks_and_metachars_in_values():
+    # A backtick in an argument value must not break out of its inline-code span and
+    # forge the approval message; Slack metacharacters are escaped too.
+    session = _FakeSession()
+    evil = Action(
+        tool_name="refund",
+        args={"note": "`*pwned*` <script> & co"},
+        tool_description="x",
+    )
+    SlackChannel("https://x", timeout=0, poll_interval=0, session=session).request_approval(evil)
+    text = session.posts[0][1]["text"]
+    assert "`*pwned*`" not in text  # raw backtick pair cannot survive into the message
+    assert "&amp;" in text and "&lt;script&gt;" in text  # metacharacters escaped

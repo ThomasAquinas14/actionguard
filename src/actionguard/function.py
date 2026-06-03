@@ -128,7 +128,9 @@ def _wrap_callable(
             try:
                 result = await func(*args, **kwargs)
             except Exception as exc:
-                audit.record(
+                # Post-execution: the call was attempted, so record best-effort and let
+                # the *original* error surface — never let an audit write mask it.
+                audit.record_safely(
                     action=action,
                     needed_approval=needed,
                     decision=decision,
@@ -136,7 +138,7 @@ def _wrap_callable(
                     error=exc,
                 )
                 raise
-            audit.record(
+            audit.record_safely(
                 action=action,
                 needed_approval=needed,
                 decision=decision,
@@ -163,11 +165,13 @@ def _wrap_callable(
         try:
             result = func(*args, **kwargs)
         except Exception as exc:
-            audit.record(
+            # Post-execution: record best-effort and re-raise the original error (see
+            # the async path above) — an audit failure must not look like a tool failure.
+            audit.record_safely(
                 action=action, needed_approval=needed, decision=decision, executed=False, error=exc
             )
             raise
-        audit.record(
+        audit.record_safely(
             action=action, needed_approval=needed, decision=decision, executed=True, result=result
         )
         return result

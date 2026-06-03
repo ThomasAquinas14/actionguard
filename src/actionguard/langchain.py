@@ -85,7 +85,11 @@ class ApprovalWrappedTool(BaseTool):
         result: Any = None,
         error: Any = None,
     ) -> None:
-        self.audit.record(
+        # Post-execution: the inner tool has already run (or raised). A failure to write
+        # this record must not turn a completed action into an error the agent retries,
+        # so record best-effort and warn rather than raising. (The pre-execution denial
+        # and guard-error records stay strict — they fail closed before anything runs.)
+        self.audit.record_safely(
             action=action,
             needed_approval=needed_approval,
             decision=decision,

@@ -6,6 +6,30 @@ All notable changes to actionguard are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.1] — fail-closed hardening
+
+Security and robustness fixes for the approval gate. No API changes; upgrading is
+recommended for anyone on 0.2.0.
+
+### Fixed
+- **Threshold bypass via numeric strings.** `amount_over` now parses numeric-string
+  arguments (e.g. `"4000"`) and compares them, and **fails closed** (holds the call)
+  when the configured argument is present but not a number. Previously a plain callable
+  receiving an unconverted string — which has no schema to coerce it — could slip a
+  large value past the threshold without approval.
+- **Slack webhook failures no longer pass silently.** The webhook POST now uses a
+  network timeout and checks the HTTP status; a failed delivery (the human never saw
+  the request) fails closed instead of falling through to wait for a decision.
+- **Audit writes can no longer mask a completed action.** The audit sink is preflighted
+  at construction (a bad path/permissions fails before any action runs), and a
+  post-execution audit-write failure now warns loudly rather than surfacing as a tool
+  error — so a successfully executed, irreversible action is never reported as failed
+  (which could trigger a duplicate retry).
+- **Approval display hardened against argument spoofing.** Argument values are now
+  sanitized (the CLI escapes control characters from a malicious `__repr__`; Slack
+  escapes mrkdwn metacharacters and backticks) so a crafted argument can't break out of
+  its formatting and forge the approval banner.
+
 ## [0.2.0] — framework-agnostic guard
 
 `guard` now wraps **any Python callable**, not just LangChain tools — the capability a
@@ -47,5 +71,7 @@ agent's irreversible tool calls, and nothing more.
 - Control characters in tool names, descriptions, and argument keys are neutralized
   before being shown to a human approver, so a malicious tool cannot forge the banner.
 
-[Unreleased]: https://github.com/ThomasAquinas14/actionguard/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/ThomasAquinas14/actionguard/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/ThomasAquinas14/actionguard/compare/v0.2.0...v0.2.1
+[0.2.0]: https://github.com/ThomasAquinas14/actionguard/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/ThomasAquinas14/actionguard/releases/tag/v0.1.0

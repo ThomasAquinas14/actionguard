@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 
+import pytest
 from langchain_core.tools import tool
 
 from actionguard import ApprovalPolicy, guard
@@ -96,6 +97,38 @@ def test_audit_disabled_is_noop_but_returns_record(tmp_path):
     assert not path.exists()
 
 
+def test_audit_preflight_fails_fast_on_unwritable_sink(tmp_path):
+    # An unwritable audit sink must surface at construction time — before any guarded
+    # action can run — not as a crash after an irreversible action has executed.
+    # A directory path can't be opened for append, so it stands in for "unwritable".
+    with pytest.raises(OSError):
+        AuditLog(tmp_path)  # tmp_path is a directory
+
+
+def test_post_execution_audit_failure_does_not_mask_completed_action(tmp_path, auto_approve):
+    # If the sink goes bad *after* the tool runs, the caller must still see the result
+    # (not an error that would make an agent retry an irreversible action). A loud
+    # RuntimeWarning is emitted instead.
+    @tool
+    def do_thing(x: int) -> str:
+        """Do."""
+        return f"did {x}"
+
+    audit = AuditLog(tmp_path / "audit.jsonl")
+
+    def boom(**_kwargs):
+        raise PermissionError("sink went away mid-run")
+
+    audit.record = boom  # type: ignore[method-assign]
+    guarded = guard(
+        do_thing, policy=ApprovalPolicy(require_always=True), channel=auto_approve, audit=audit
+    )
+
+    with pytest.warns(RuntimeWarning, match="DID execute"):
+        result = guarded.invoke({"x": 7})
+    assert result == "did 7"  # completed action is reported as success, not retried
+
+
 # ---- end-to-end interception: approve runs it, deny blocks it ---------------
 
 
@@ -186,8 +219,6 @@ def test_audit_records_tool_error(tmp_path, auto_approve):
     guarded = guard(
         boom, policy=ApprovalPolicy(require_always=True), channel=auto_approve, audit=audit
     )
-
-    import pytest
 
     with pytest.raises(RuntimeError):
         guarded.invoke({"x": 1})
